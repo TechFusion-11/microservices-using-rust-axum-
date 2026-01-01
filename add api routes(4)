@@ -1,0 +1,248 @@
+Perfect 👍
+Now let’s **wire EVERYTHING together** by **adding ALL service routes inside the API Gateway**, so:
+
+> 🌍 **Browser talks ONLY to API Gateway**
+> 🔒 **API Gateway talks to ALL microservices**
+
+I’ll show this **step by step**, **very clearly**, with **full API Gateway code**.
+
+---
+
+## 🧠 What We Are Doing (Big Picture)
+
+![Image](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/architect-microservice-container-applications/media/direct-client-to-microservice-communication-versus-the-api-gateway-pattern/custom-service-api-gateway.png)
+
+![Image](https://d2908q01vomqb2.cloudfront.net/fc074d501302eb2b93e2554793fcaf50b3bf7291/2019/10/11/Anand-entrypoint-1.png)
+
+```
+Browser
+  |
+  v
+API Gateway (8080)
+  |----> Auth Service (8083)
+  |----> User Service (8082)
+  |----> Todo Service (8081)
+```
+
+---
+
+# 1️⃣ API GATEWAY = ROUTER
+
+The API Gateway will expose these public routes:
+
+| Public Route (Browser) | Internal Service |
+| ---------------------- | ---------------- |
+| `/login`               | Auth Service     |
+| `/user`                | User Service     |
+| `/todos` (GET)         | Todo Service     |
+| `/todos` (POST)        | Todo Service     |
+
+---
+
+# 2️⃣ API Gateway Dependencies
+
+`api-gateway/Cargo.toml`
+
+```toml
+[dependencies]
+actix-web = "4"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+```
+
+---
+
+# 3️⃣ FULL API GATEWAY CODE (IMPORTANT)
+
+👉 `api-gateway/src/main.rs`
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Responder};
+use reqwest::Client;
+use serde::Deserialize;
+
+/* ---------------- AUTH ---------------- */
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    email: String,
+    password: String,
+}
+
+async fn login(req: web::Json<LoginRequest>) -> impl Responder {
+    let client = Client::new();
+
+    let res = client
+        .post("http://auth-service:8083/login")
+        .json(&*req)
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    HttpResponse::Ok().body(res)
+}
+
+/* ---------------- USER ---------------- */
+
+async fn get_user() -> impl Responder {
+    let client = Client::new();
+
+    let res = client
+        .get("http://user-service:8082/user")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    HttpResponse::Ok().body(res)
+}
+
+/* ---------------- TODO ---------------- */
+
+async fn get_todos() -> impl Responder {
+    let client = Client::new();
+
+    let res = client
+        .get("http://todo-service:8081/todos")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    HttpResponse::Ok().body(res)
+}
+
+async fn create_todo(body: String) -> impl Responder {
+    let client = Client::new();
+
+    let res = client
+        .post("http://todo-service:8081/todos")
+        .body(body)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    HttpResponse::Created().body(res)
+}
+
+/* ---------------- MAIN ---------------- */
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new()
+            // AUTH
+            .route("/login", web::post().to(login))
+
+            // USER
+            .route("/user", web::get().to(get_user))
+
+            // TODO
+            .route("/todos", web::get().to(get_todos))
+            .route("/todos", web::post().to(create_todo))
+    })
+    .bind(("0.0.0.0", 8080))?
+    .run()
+    .await
+}
+```
+
+---
+
+# 4️⃣ HOW YOU USE IT (FROM BROWSER / POSTMAN)
+
+### 🔹 Login
+
+```
+POST http://localhost:8080/login
+```
+
+```json
+{
+  "email": "test@test.com",
+  "password": "1234"
+}
+```
+
+---
+
+### 🔹 Get User
+
+```
+GET http://localhost:8080/user
+```
+
+---
+
+### 🔹 Get Todos
+
+```
+GET http://localhost:8080/todos
+```
+
+---
+
+### 🔹 Create Todo
+
+```
+POST http://localhost:8080/todos
+```
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "Learn Microservices",
+  "completed": false
+}
+```
+
+---
+
+# 5️⃣ WHY THIS WORKS (VERY IMPORTANT)
+
+| Thing               | Why                            |
+| ------------------- | ------------------------------ |
+| Same Docker network | All services see each other    |
+| Service names       | `todo-service`, `user-service` |
+| Gateway routing     | Single entry point             |
+| Internal ports      | Secure, hidden                 |
+
+---
+
+# 6️⃣ GOLDEN RULE (PLEASE REMEMBER)
+
+> **Every new microservice =
+> Add ONE route in API Gateway**
+
+---
+
+# 7️⃣ COMMON BEGINNER MISTAKES ❌
+
+❌ Browser calling `localhost:8081`
+❌ Using `localhost` inside containers
+❌ Exposing all services with `ports`
+❌ No gateway routing
+
+---
+
+## 🚀 NEXT STEPS (YOU CHOOSE)
+
+I can now:
+1️⃣ Add **JWT authentication** in gateway
+2️⃣ Add **database to each service**
+3️⃣ Add **error handling + retries**
+4️⃣ Add **service health checks**
+5️⃣ Convert to **Kubernetes**
+
+👉 Tell me the number 👍
