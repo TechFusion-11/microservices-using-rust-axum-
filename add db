@@ -1,0 +1,306 @@
+Perfect 👍
+Now you are moving into **REAL microservices** territory.
+
+I’ll show you **how to add a DATABASE to EACH service**, **step by step**, **very slowly**, assuming **zero prior DB knowledge**.
+
+We will do this **the correct industry way**.
+
+---
+
+# 🧠 BIG IDEA (VERY IMPORTANT)
+
+> **Each microservice owns its OWN database.
+> NO database sharing. EVER.**
+
+![Image](https://miro.medium.com/1%2A5CUirR-FYRC2nN4dA8dCjg.png)
+
+![Image](https://miro.medium.com/v2/resize%3Afit%3A731/1%2A5CUirR-FYRC2nN4dA8dCjg.png)
+
+---
+
+# 🧱 DATABASE CHOICE (Beginner Friendly)
+
+We will use:
+
+* **PostgreSQL**
+* **SQLx** (Rust async DB library)
+
+Why?
+
+* Production ready
+* Used by companies
+* Simple to understand
+
+---
+
+# 🗂 FINAL ARCHITECTURE (After DB)
+
+```
+API Gateway
+    |
+    |----> Auth Service  ----> auth_db
+    |
+    |----> User Service  ----> user_db
+    |
+    |----> Todo Service  ----> todo_db
+```
+
+---
+
+# 1️⃣ STEP 1: Add PostgreSQL Containers
+
+Update **docker-compose.yml**
+
+```yaml
+version: "3.8"
+
+services:
+  todo-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: todo_db
+      POSTGRES_USER: todo_user
+      POSTGRES_PASSWORD: todo_pass
+
+  user-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user_user
+      POSTGRES_PASSWORD: user_pass
+
+  auth-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+
+  todo-service:
+    build: ./todo-service
+    depends_on:
+      - todo-db
+    environment:
+      DATABASE_URL: postgres://todo_user:todo_pass@todo-db:5432/todo_db
+    expose:
+      - "8081"
+
+  user-service:
+    build: ./user-service
+    depends_on:
+      - user-db
+    environment:
+      DATABASE_URL: postgres://user_user:user_pass@user-db:5432/user_db
+    expose:
+      - "8082"
+
+  auth-service:
+    build: ./auth-service
+    depends_on:
+      - auth-db
+    environment:
+      DATABASE_URL: postgres://auth_user:auth_pass@auth-db:5432/auth_db
+    expose:
+      - "8083"
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+```
+
+🔥 **Each service connects ONLY to its own DB**
+
+---
+
+# 2️⃣ STEP 2: Add DB Support to TODO SERVICE
+
+---
+
+## 2.1 Add Dependencies
+
+`todo-service/Cargo.toml`
+
+```toml
+[dependencies]
+actix-web = "4"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid"] }
+dotenvy = "0.15"
+```
+
+---
+
+## 2.2 Create Database Table
+
+Connect to DB (once):
+
+```bash
+docker exec -it todo-db psql -U todo_user -d todo_db
+```
+
+Run SQL:
+
+```sql
+CREATE TABLE todos (
+    id UUID PRIMARY KEY,
+    title TEXT NOT NULL,
+    completed BOOLEAN NOT NULL
+);
+```
+
+---
+
+## 2.3 Update Todo Service Code
+
+### `src/main.rs`
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Responder};
+use sqlx::PgPool;
+use uuid::Uuid;
+use serde::{Serialize, Deserialize};
+use std::env;
+
+#[derive(Serialize, Deserialize)]
+struct Todo {
+    id: Uuid,
+    title: String,
+    completed: bool,
+}
+
+async fn get_todos(db: web::Data<PgPool>) -> impl Responder {
+    let todos = sqlx::query_as!(
+        Todo,
+        "SELECT id, title, completed FROM todos"
+    )
+    .fetch_all(db.get_ref())
+    .await
+    .unwrap();
+
+    HttpResponse::Ok().json(todos)
+}
+
+async fn create_todo(
+    db: web::Data<PgPool>,
+    todo: web::Json<Todo>,
+) -> impl Responder {
+    sqlx::query!(
+        "INSERT INTO todos (id, title, completed) VALUES ($1, $2, $3)",
+        todo.id,
+        todo.title,
+        todo.completed
+    )
+    .execute(db.get_ref())
+    .await
+    .unwrap();
+
+    HttpResponse::Created().json(todo)
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    dotenvy::dotenv().ok();
+
+    let db_url = env::var("DATABASE_URL").unwrap();
+    let pool = PgPool::connect(&db_url).await.unwrap();
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .route("/todos", web::get().to(get_todos))
+            .route("/todos", web::post().to(create_todo))
+    })
+    .bind(("0.0.0.0", 8081))?
+    .run()
+    .await
+}
+```
+
+✅ Todo service now uses **real database**
+
+---
+
+# 3️⃣ STEP 3: Add DB to USER SERVICE
+
+---
+
+## User Table
+
+```sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL
+);
+```
+
+---
+
+## User Service Responsibilities
+
+* Store user profile
+* Fetch user info
+
+Same steps as Todo:
+
+* Add SQLx
+* Use `DATABASE_URL`
+* Query `users` table
+
+---
+
+# 4️⃣ STEP 4: Add DB to AUTH SERVICE
+
+---
+
+## Auth Table
+
+```sql
+CREATE TABLE credentials (
+    id UUID PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL
+);
+```
+
+---
+
+## Auth Service Logic
+
+* Register → save credentials
+* Login → verify password
+* Return token
+
+🔥 **Auth DB is NEVER accessed by other services**
+
+---
+
+# 5️⃣ WHY THIS IS CORRECT MICROSERVICE DESIGN
+
+| Rule                | Followed? |
+| ------------------- | --------- |
+| DB per service      | ✅         |
+| No shared tables    | ✅         |
+| Loose coupling      | ✅         |
+| Independent scaling | ✅         |
+
+---
+
+# 🔑 GOLDEN RULE (PLEASE MEMORIZE)
+
+> **Microservices share APIs, NOT databases**
+
+---
+
+# 🚀 NEXT LEVEL (YOU CHOOSE)
+
+I can now:
+1️⃣ Add **JWT auth with DB**
+2️⃣ Password hashing (bcrypt)
+3️⃣ DB migrations
+4️⃣ Service-to-service auth
+5️⃣ Kubernetes + persistent volumes
+
+👉 Tell me the number 👍
