@@ -1,0 +1,448 @@
+Perfect 👍
+We’ll now **add EACH microservice ONE BY ONE**, **step by step**, in **beginner-friendly Rust**, for a **pure microservices TODO application**.
+
+I will **not skip steps**, and I’ll explain **why we do each thing**.
+
+---
+
+# 🧱 FINAL MICROSERVICES WE WILL BUILD
+
+![Image](https://www.researchgate.net/publication/374484901/figure/fig1/AS%3A11431281196282718%401696596139547/Microservices-of-a-To-Do-application_Q320.jpg)
+
+![Image](https://fusionauth.io/img/articles/tokens-microservices-boundaries/reissue.png)
+
+| Order | Service      |
+| ----- | ------------ |
+| 1️⃣   | Todo Service |
+| 2️⃣   | User Service |
+| 3️⃣   | Auth Service |
+| 4️⃣   | API Gateway  |
+
+Each service is:
+
+* Independent
+* Own Rust project
+* Own port
+* No shared code
+
+---
+
+# 📁 ROOT PROJECT STRUCTURE
+
+```text
+todo-microservices/
+│
+├── todo-service/
+├── user-service/
+├── auth-service/
+├── api-gateway/
+│
+└── docker-compose.yml
+```
+
+---
+
+# 1️⃣ TODO SERVICE (Core Business Logic)
+
+## 🎯 Responsibility
+
+* Create todo
+* Get todos
+* Update todo
+* Delete todo
+
+---
+
+## 1.1 Create Project
+
+```bash
+cargo new todo-service
+cd todo-service
+```
+
+---
+
+## 1.2 Add Dependencies (`Cargo.toml`)
+
+```toml
+[dependencies]
+actix-web = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+```
+
+---
+
+## 1.3 Todo Model (`src/models.rs`)
+
+```rust
+use serde::{Serialize, Deserialize};
+use uuid::Uuid;
+
+#[derive(Serialize, Deserialize)]
+pub struct Todo {
+    pub id: Uuid,
+    pub title: String,
+    pub completed: bool,
+}
+```
+
+---
+
+## 1.4 Routes (`src/main.rs`)
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Responder};
+use uuid::Uuid;
+
+mod models;
+use models::Todo;
+
+async fn get_todos() -> impl Responder {
+    let todos = vec![
+        Todo {
+            id: Uuid::new_v4(),
+            title: "Learn Rust".to_string(),
+            completed: false,
+        }
+    ];
+    HttpResponse::Ok().json(todos)
+}
+
+async fn create_todo(todo: web::Json<Todo>) -> impl Responder {
+    HttpResponse::Created().json(todo)
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new()
+            .route("/todos", web::get().to(get_todos))
+            .route("/todos", web::post().to(create_todo))
+    })
+    .bind(("0.0.0.0", 8081))?
+    .run()
+    .await
+}
+```
+
+---
+
+## 1.5 Run Todo Service
+
+```bash
+cargo run
+```
+
+Test:
+
+* GET → `http://localhost:8081/todos`
+
+✅ **Todo microservice is DONE**
+
+---
+
+# 2️⃣ USER SERVICE (User Data Only)
+
+## 🎯 Responsibility
+
+* Store user profile
+* Return user info
+* NO authentication logic here
+
+---
+
+## 2.1 Create Project
+
+```bash
+cargo new user-service
+cd user-service
+```
+
+---
+
+## 2.2 Dependencies
+
+```toml
+[dependencies]
+actix-web = "4"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+```
+
+---
+
+## 2.3 User Model (`models.rs`)
+
+```rust
+use serde::{Serialize, Deserialize};
+use uuid::Uuid;
+
+#[derive(Serialize, Deserialize)]
+pub struct User {
+    pub id: Uuid,
+    pub name: String,
+    pub email: String,
+}
+```
+
+---
+
+## 2.4 Routes (`main.rs`)
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Responder};
+use uuid::Uuid;
+
+mod models;
+use models::User;
+
+async fn get_user() -> impl Responder {
+    let user = User {
+        id: Uuid::new_v4(),
+        name: "John".to_string(),
+        email: "john@email.com".to_string(),
+    };
+    HttpResponse::Ok().json(user)
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new().route("/user", web::get().to(get_user))
+    })
+    .bind(("0.0.0.0", 8082))?
+    .run()
+    .await
+}
+```
+
+---
+
+## 2.5 Run User Service
+
+```bash
+cargo run
+```
+
+Test:
+
+* GET → `http://localhost:8082/user`
+
+✅ **User service complete**
+
+---
+
+# 3️⃣ AUTH SERVICE (Authentication Only)
+
+## 🎯 Responsibility
+
+* Register user
+* Login user
+* Return token (mock for now)
+
+---
+
+## 3.1 Create Project
+
+```bash
+cargo new auth-service
+cd auth-service
+```
+
+---
+
+## 3.2 Dependencies
+
+```toml
+[dependencies]
+actix-web = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+---
+
+## 3.3 Auth Models (`models.rs`)
+
+```rust
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+```
+
+---
+
+## 3.4 Routes (`main.rs`)
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Responder};
+
+mod models;
+use models::LoginRequest;
+
+async fn login(info: web::Json<LoginRequest>) -> impl Responder {
+    HttpResponse::Ok().json({
+        format!("token-for-{}", info.email)
+    })
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new().route("/login", web::post().to(login))
+    })
+    .bind(("0.0.0.0", 8083))?
+    .run()
+    .await
+}
+```
+
+---
+
+## 3.5 Run Auth Service
+
+```bash
+cargo run
+```
+
+Test:
+
+* POST → `http://localhost:8083/login`
+
+```json
+{
+  "email": "a@b.com",
+  "password": "1234"
+}
+```
+
+✅ **Auth service done**
+
+---
+
+# 4️⃣ API GATEWAY (Single Entry Point)
+
+## 🎯 Responsibility
+
+* Frontend talks ONLY to this
+* Forwards requests to services
+
+---
+
+## 4.1 Create Project
+
+```bash
+cargo new api-gateway
+cd api-gateway
+```
+
+---
+
+## 4.2 Dependencies
+
+```toml
+[dependencies]
+actix-web = "4"
+reqwest = { version = "0.11", features = ["json"] }
+```
+
+---
+
+## 4.3 Gateway Logic (`main.rs`)
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Responder};
+use reqwest::Client;
+
+async fn todos() -> impl Responder {
+    let client = Client::new();
+    let res = client
+        .get("http://todo-service:8081/todos")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    HttpResponse::Ok().body(res)
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        App::new().route("/todos", web::get().to(todos))
+    })
+    .bind(("0.0.0.0", 8080))?
+    .run()
+    .await
+}
+```
+
+---
+
+# 5️⃣ DOCKER COMPOSE (Connect Everything)
+
+```yaml
+version: "3"
+services:
+  todo-service:
+    build: ./todo-service
+    ports:
+      - "8081:8081"
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "8082:8082"
+
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8083:8083"
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+```
+
+Run:
+
+```bash
+docker-compose up --build
+```
+
+---
+
+# 🎉 FINAL RESULT
+
+Frontend talks to:
+
+```
+http://localhost:8080/todos
+```
+
+Gateway → Todo Service
+Auth & User services are independent
+
+✅ **PURE MICROSERVICES ARCHITECTURE**
+
+---
+
+# 🚀 NEXT (Tell Me What You Want)
+
+I can now:
+1️⃣ Add PostgreSQL database
+2️⃣ Add JWT authentication
+3️⃣ Add inter-service auth validation
+4️⃣ Add React frontend
+5️⃣ Convert to Kubernetes
+
+👉 Just say the number 👍
