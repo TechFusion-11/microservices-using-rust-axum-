@@ -1,0 +1,171 @@
+Excellent question 👌
+This is **the MOST important microservices concept**, so let’s clear it **slowly and clearly**.
+
+---
+
+## Short Answer (One Line)
+
+👉 **`http://localhost:8081/todos` is INTERNAL (for services)**
+👉 **`http://localhost:8080/todos` is EXTERNAL (for frontend / users)**
+
+---
+
+## Big Picture (Visual)
+
+![Image](https://user-images.githubusercontent.com/6509926/55251995-c4c1a680-521f-11e9-8e1c-f01ad5622f1e.png)
+
+![Image](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/architect-microservice-container-applications/media/direct-client-to-microservice-communication-versus-the-api-gateway-pattern/multiple-custom-api-gateways.png)
+
+```
+Frontend / Client
+        |
+        v
+API Gateway (8080)
+        |
+        v
+Todo Service (8081)
+```
+
+---
+
+## Why Do We Have TWO URLs?
+
+### 🔹 1️⃣ `http://localhost:8081/todos` → **Todo Service URL**
+
+This is the **real Todo microservice**.
+
+### Used by:
+
+* API Gateway
+* Other backend services
+* Internal debugging
+
+### NOT used by:
+
+* Frontend
+* Mobile apps
+* External users
+
+### Think of it like:
+
+🏭 **Factory inside a company**
+
+---
+
+### 🔹 2️⃣ `http://localhost:8080/todos` → **API Gateway URL**
+
+This is the **ONLY public entry point**.
+
+### Used by:
+
+* React frontend
+* Mobile app
+* Browser
+* External clients
+
+### Think of it like:
+
+🏢 **Reception desk of a company**
+
+---
+
+## Real-Life Example 🏢
+
+### Company Building
+
+| Role      | Real Life      | Microservices |
+| --------- | -------------- | ------------- |
+| Reception | Front door     | API Gateway   |
+| Employees | Internal rooms | Microservices |
+| Visitors  | Customers      | Frontend      |
+
+👉 Visitors **cannot enter employee rooms directly**
+👉 They must go through **reception**
+
+---
+
+## Why NOT Call `8081` Directly from Frontend?
+
+### ❌ Problems
+
+1. **Security risk**
+
+   * Anyone can bypass auth
+2. **Service changes break frontend**
+
+   * Port or URL changes → app breaks
+3. **No central authentication**
+4. **No request validation**
+5. **No rate limiting**
+
+---
+
+## What API Gateway Actually Does
+
+| Feature        | Example                 |
+| -------------- | ----------------------- |
+| Auth check     | Validate JWT            |
+| Routing        | `/todos → todo-service` |
+| Logging        | Track requests          |
+| Rate limiting  | Prevent abuse           |
+| API versioning | `/v1/todos`             |
+
+---
+
+## Can We Remove `8081` in Production?
+
+✅ **YES**
+
+In production:
+
+* `8081` is **not exposed publicly**
+* Only **internal network** can access it
+
+Example:
+
+```yaml
+todo-service:
+  ports: ❌ REMOVED
+```
+
+Only API Gateway sees it.
+
+---
+
+## Why Keep `8081` During Development?
+
+### ✅ Benefits
+
+* Easy debugging
+* Test service independently
+* Faster development
+
+---
+
+## Interview-Ready Answer 🎯
+
+> **Why use API Gateway if services already have endpoints?**
+
+**Answer:**
+
+> Microservices endpoints are internal.
+> API Gateway provides a single secure entry point, handles authentication, routing, and protects internal services from direct access.
+
+---
+
+## Simple Rule to Remember 🧠
+
+> **Frontend → Gateway → Microservices**
+> ❌ **Frontend → Microservices**
+
+---
+
+## Want Next?
+
+I can:
+1️⃣ Add **JWT validation in gateway**
+2️⃣ Hide internal ports properly
+3️⃣ Add **service-to-service auth**
+4️⃣ Show **production Docker setup**
+
+Just tell me 👍
